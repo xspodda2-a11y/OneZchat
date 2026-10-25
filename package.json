@@ -1,0 +1,19 @@
+{
+  "name": "onezchat",
+  "version": "1.0.0",
+  "description": "OneZchat — a secure, WhatsApp-style browser chat with end-to-end encryption. No password: your name creates your OneZ ID, saved on your device.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["chat", "websocket", "e2e-encryption", "whatsapp-clone"],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

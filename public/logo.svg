@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="OneZchat">
+  <defs>
+    <linearGradient id="oz-obsidian" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171b24"/>
+      <stop offset="0.55" stop-color="#0b0e14"/>
+      <stop offset="1" stop-color="#05060a"/>
+    </linearGradient>
+    <linearGradient id="oz-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbeed0"/>
+      <stop offset="0.38" stop-color="#e3c896"/>
+      <stop offset="0.62" stop-color="#c9a468"/>
+      <stop offset="1" stop-color="#8d6a3a"/>
+    </linearGradient>
+    <linearGradient id="oz-jewel" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#2ff0b4"/>
+      <stop offset="0.45" stop-color="#00c389"/>
+      <stop offset="1" stop-color="#00694e"/>
+    </linearGradient>
+    <linearGradient id="oz-gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="oz-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#00e0a4" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#00b4d8" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#00b4d8" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="oz-bubble-clip">
+      <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"/>
+    </clipPath>
+    <filter id="oz-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="oz-sparkle-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- obsidian tile -->
+  <rect x="10" y="10" width="220" height="220" rx="66" fill="url(#oz-obsidian)" filter="url(#oz-shadow)"/>
+  <!-- champagne hairlines -->
+  <rect x="10.75" y="10.75" width="218.5" height="218.5" rx="65.25" fill="none" stroke="url(#oz-gold)" stroke-opacity="0.85" stroke-width="1.5"/>
+  <rect x="24" y="24" width="192" height="192" rx="53" fill="none" stroke="url(#oz-gold)" stroke-opacity="0.16" stroke-width="1"/>
+
+  <!-- jewel halo -->
+  <ellipse cx="120" cy="122" rx="92" ry="80" fill="url(#oz-halo)"/>
+
+  <!-- chat bubble -->
+  <g>
+    <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"
+          fill="url(#oz-jewel)"/>
+    <g clip-path="url(#oz-bubble-clip)">
+      <rect x="50" y="64" width="140" height="60" fill="url(#oz-gloss)"/>
+      <ellipse cx="150" cy="168" rx="62" ry="34" fill="#003d2c" opacity="0.35"/>
+    </g>
+    <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"
+          fill="none" stroke="url(#oz-gold)" stroke-opacity="0.5" stroke-width="1.6"/>
+  </g>
+
+  <!-- champagne sparkle -->
+  <g filter="url(#oz-sparkle-glow)">
+    <path d="M120,84 C123.4,101.6 136.4,114.6 154,118 C136.4,121.4 123.4,134.4 120,152 C116.6,134.4 103.6,121.4 86,118 C103.6,114.6 116.6,101.6 120,84 Z"
+          fill="url(#oz-gold)"/>
+    <circle cx="160" cy="90" r="4.2" fill="url(#oz-gold)" opacity="0.9"/>
+  </g>
+</svg>

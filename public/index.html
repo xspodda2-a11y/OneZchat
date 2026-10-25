@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="si" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>OneZchat — Chat Freely. Chat Securely.</title>
+<meta name="description" content="OneZchat: WhatsApp-style chat in your browser. No password — your name creates your OneZ ID. End-to-end encrypted.">
+<meta name="theme-color" content="#05060a">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="alternate icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Noto+Sans+Sinhala:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ambient animated background -->
+<div class="ambient" aria-hidden="true">
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div class="float-bubble fb1">💬</div><div class="float-bubble fb2">✨</div>
+  <div class="float-bubble fb3">🔒</div><div class="float-bubble fb4">💚</div>
+</div>
+
+<!-- ══════════════ SPLASH / INTRO ══════════════ -->
+<div id="splash">
+  <div class="splash-frame" aria-hidden="true"></div>
+  <div class="splash-inner">
+    <div class="logo-wrap">
+      <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+      <img src="/logo.svg" alt="OneZchat" class="splash-logo">
+    </div>
+    <h1 class="splash-title" aria-label="OneZchat">
+      <span>O</span><span>n</span><span>e</span><span class="z">Z</span><span>c</span><span>h</span><span>a</span><span>t</span>
+    </h1>
+    <p class="splash-tag">Chat Freely · Chat Securely</p>
+    <div class="splash-bar"><i></i></div>
+    <p class="splash-sub">End-to-End Encrypted</p>
+  </div>
+</div>
+
+<!-- ══════════════ ONBOARDING (no login!) ══════════════ -->
+<div id="onboard" class="screen hidden">
+  <div class="onboard-card pop-in">
+    <img src="/logo.svg" alt="" class="onboard-logo">
+    <h2>ආයුබෝවන්! Welcome to <span class="grad-text">OneZchat</span></h2>
+    <p class="muted">Password මුකුත් නෑ 🙌 — ඔයාගේ නම දුන්නම, ඔයාටම අයිති <b>OneZ ID</b> එකක් මේ device එකේම හැදෙනවා. ආයේ එනකොට ඒකෙන්ම කෙලින්ම යන්න පුළුවන්!</p>
+
+    <label class="field-label" for="ob-name">ඔයාගේ නම · Your name</label>
+    <input id="ob-name" type="text" maxlength="40" placeholder="e.g. Kasun Perera" autocomplete="name">
+
+    <label class="field-label">Profile emoji එකක් තෝරන්න</label>
+    <div id="ob-emojis" class="emoji-grid"></div>
+
+    <label class="field-label">Colour එකක් තෝරන්න</label>
+    <div id="ob-grads" class="grad-grid"></div>
+
+    <div class="preview-row">
+      <div id="ob-preview" class="avatar lg grad-0">😀</div>
+      <div>
+        <div id="ob-preview-name" class="preview-name">Your name</div>
+        <div class="muted small">OZ-•••••• · ඔබේ අලුත් ID එක</div>
+      </div>
+    </div>
+
+    <button id="ob-start" class="btn-primary big">🚀 මගේ OneZ ID එක හදන්න</button>
+    <p id="ob-error" class="error-text hidden"></p>
+    <p class="muted small center">🔒 Encryption keys හැදෙන්නේ ඔයාගේ device එකේමයි. Server එකට ඔයාගේ messages කියවන්න බෑ.</p>
+  </div>
+
+  <!-- ID reveal -->
+  <div id="id-reveal" class="onboard-card pop-in hidden">
+    <div class="confetti">🎉</div>
+    <h2>ඔයාගේ OneZ ID එක ලෑස්තියි!</h2>
+    <div class="id-card">
+      <div id="reveal-avatar" class="avatar lg grad-0">😀</div>
+      <div>
+        <div id="reveal-name" class="preview-name">—</div>
+        <div class="id-big"><span id="reveal-id">OZ-000000</span>
+          <button id="reveal-copy" class="icon-btn small" title="Copy ID">📋</button>
+        </div>
+      </div>
+    </div>
+    <p class="muted">මේ ID එක යාළුවන්ට දෙන්න — එයාලට <b>People</b> tab එකෙන් ඔයාව හොයාගෙන chat කරන්න පුළුවන්. මේ device එකේ ID එක save උනා, ආයේ එනකොට auto log වෙනවා ✨</p>
+    <button id="reveal-go" class="btn-primary big">💬 Chat කරන්න යමු!</button>
+  </div>
+</div>
+
+<!-- ══════════════ MAIN APP ══════════════ -->
+<div id="app" class="hidden">
+
+  <!-- ── Sidebar ── -->
+  <aside id="sidebar">
+    <header class="side-head">
+      <button id="me-avatar-btn" class="avatar-btn" title="My profile">
+        <span id="me-avatar" class="avatar grad-0">😀</span>
+        <span class="me-meta">
+          <span id="me-name">—</span>
+          <span id="me-id" class="me-id">OZ-••••••</span>
+        </span>
+      </button>
+      <div class="head-actions">
+        <button id="btn-new-group" class="icon-btn" title="New group">👥</button>
+        <button id="btn-theme" class="icon-btn" title="Theme">🌙</button>
+        <button id="btn-menu" class="icon-btn" title="Menu">⋮</button>
+      </div>
+      <div id="main-menu" class="dropdown hidden">
+        <button data-act="profile">👤 My Profile</button>
+        <button data-act="copyid">📋 Copy my OneZ ID</button>
+        <button data-act="newgroup">👥 New Group</button>
+        <button data-act="theme">🌓 Toggle Theme</button>
+        <hr>
+        <button data-act="logout" class="danger">🚪 Log out (reset this device)</button>
+      </div>
+    </header>
+
+    <div class="search-wrap">
+      <span class="search-ic">🔍</span>
+      <input id="search" type="text" placeholder="Search chats, people, OZ-ID…">
+    </div>
+
+    <nav class="tabs">
+      <button id="tab-chats" class="tab active">💬 Chats <span id="chats-badge" class="tab-badge hidden">0</span></button>
+      <button id="tab-status" class="tab">🟢 Status <span id="status-badge" class="tab-badge hidden">0</span></button>
+      <button id="tab-people" class="tab">👥 People</button>
+    </nav>
+
+    <div id="conn-banner" class="conn-banner hidden">📡 Connecting…</div>
+
+    <div id="chat-list" class="list"></div>
+    <div id="status-list" class="list hidden"></div>
+    <div id="people-list" class="list hidden"></div>
+
+    <footer class="side-foot">🔒 End-to-end encrypted · OneZchat</footer>
+  </aside>
+
+  <!-- ── Chat pane ── -->
+  <main id="chat-pane">
+    <div id="empty-state">
+      <img src="/logo.svg" alt="" class="empty-logo">
+      <h2>Welcome to <span class="grad-text">OneZchat</span> 💚</h2>
+      <p class="muted">වම් පැත්තෙන් chat එකක් තෝරන්න, නැත්නම් <b>People</b> tab එකෙන් අලුත් යාළුවෙක්ට message එකක් දාන්න.</p>
+      <div class="feature-chips">
+        <span>🔒 E2E Encrypted</span><span>👥 Groups</span><span>📞 Voice & Video</span>
+        <span>🎤 Voice Msgs</span><span>📷 Photos</span><span>❤️ Reactions</span>
+        <span>🟢 Status</span><span>🎭 Stickers</span><span>👥 Group Calls</span>
+      </div>
+      <div class="my-id-chip">මගේ ID එක: <b id="empty-my-id">OZ-••••••</b> <button id="empty-copy-id" class="icon-btn small">📋</button></div>
+    </div>
+
+    <div id="conversation" class="hidden">
+      <header class="conv-head">
+        <button id="btn-back" class="icon-btn mobile-only">←</button>
+        <button id="conv-title-btn" class="conv-title">
+          <span id="conv-avatar" class="avatar grad-0">😀</span>
+          <span class="conv-meta">
+            <span id="conv-name">—</span>
+            <span id="conv-status" class="conv-status">—</span>
+          </span>
+        </button>
+        <div class="head-actions">
+          <button id="btn-call-audio" class="icon-btn" title="Voice call">📞</button>
+          <button id="btn-call-video" class="icon-btn" title="Video call">🎥</button>
+          <button id="btn-info" class="icon-btn" title="Info">ℹ️</button>
+        </div>
+      </header>
+
+      <div class="enc-banner">🔒 Messages are end-to-end encrypted. Nobody outside this chat — not even OneZchat — can read them.</div>
+
+      <div id="messages"></div>
+      <button id="scroll-down" class="scroll-down hidden">⬇</button>
+
+      <div id="reply-bar" class="reply-bar hidden">
+        <div class="reply-bar-inner">
+          <div class="reply-bar-text"><b id="reply-to-name"></b><span id="reply-to-snippet"></span></div>
+          <button id="reply-cancel" class="icon-btn small">✖</button>
+        </div>
+      </div>
+
+      <div id="composer">
+        <button id="btn-emoji" class="icon-btn" title="Emoji">😊</button>
+        <button id="btn-sticker" class="icon-btn" title="Stickers">🎭</button>
+        <button id="btn-attach" class="icon-btn" title="Send photo">📎</button>
+        <input id="file-input" type="file" accept="image/*" class="hidden">
+        <div class="input-shell">
+          <textarea id="msg-input" rows="1" placeholder="Message…"></textarea>
+        </div>
+        <button id="btn-mic" class="fab" title="Voice message">🎤</button>
+        <button id="btn-send" class="fab hidden" title="Send">➤</button>
+      </div>
+      <div id="rec-bar" class="rec-bar hidden">
+        <span class="rec-dot"></span> <span id="rec-time">0:00</span>
+        <span class="rec-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        <button id="rec-cancel" class="btn-ghost danger">🗑 Cancel</button>
+        <button id="rec-send" class="btn-primary">Send ➤</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Info panel ── -->
+  <aside id="info-panel" class="hidden">
+    <header class="info-head">
+      <button id="info-close" class="icon-btn">✖</button><h3>Info</h3>
+    </header>
+    <div id="info-body"></div>
+  </aside>
+</div>
+
+<!-- ══════════════ MODALS ══════════════ -->
+<div id="modal-backdrop" class="hidden"></div>
+
+<!-- profile -->
+<div id="modal-profile" class="modal hidden">
+  <h3>👤 My Profile</h3>
+  <div class="center"><div id="pf-avatar" class="avatar xl grad-0">😀</div></div>
+  <label class="field-label">Emoji</label>
+  <div id="pf-emojis" class="emoji-grid"></div>
+  <label class="field-label">Colour</label>
+  <div id="pf-grads" class="grad-grid"></div>
+  <label class="field-label">Name</label>
+  <input id="pf-name" type="text" maxlength="40">
+  <label class="field-label">About</label>
+  <input id="pf-about" type="text" maxlength="120" placeholder="Hey there! I am using OneZchat ✨">
+  <label class="field-label">My OneZ ID</label>
+  <div class="id-row"><code id="pf-id">OZ-••••••</code><button id="pf-copy" class="btn-ghost">📋 Copy</button></div>
+  <div class="modal-actions">
+    <button class="btn-ghost" data-close>Cancel</button>
+    <button id="pf-save" class="btn-primary">Save</button>
+  </div>
+</div>
+
+<!-- new group -->
+<div id="modal-group" class="modal hidden">
+  <h3>👥 New Group</h3>
+  <label class="field-label">Group name</label>
+  <input id="grp-name" type="text" maxlength="60" placeholder="e.g. පවුලේ එකමුතුව ❤️">
+  <label class="field-label">Colour</label>
+  <div id="grp-grads" class="grad-grid"></div>
+  <label class="field-label">Add members</label>
+  <input id="grp-search" type="text" placeholder="Search people…">
+  <div id="grp-people" class="pick-list"></div>
+  <div class="modal-actions">
+    <button class="btn-ghost" data-close>Cancel</button>
+    <button id="grp-create" class="btn-primary">Create Group 🎉</button>
+  </div>
+</div>
+
+<!-- add member -->
+<div id="modal-addmember" class="modal hidden">
+  <h3>➕ Add Member</h3>
+  <input id="add-search" type="text" placeholder="Search people…">
+  <div id="add-people" class="pick-list"></div>
+  <div class="modal-actions"><button class="btn-ghost" data-close>Close</button></div>
+</div>
+
+<!-- ══════════════ STATUS / STORIES ══════════════ -->
+<!-- status composer -->
+<div id="modal-status" class="modal hidden">
+  <div class="st-seg">
+    <button id="st-mode-text" class="st-seg-btn active">📝 Text</button>
+    <button id="st-mode-photo" class="st-seg-btn">📷 Photo</button>
+  </div>
+
+  <div id="st-text-pane">
+    <div id="st-preview" class="st-preview grad-3">
+      <textarea id="st-text" maxlength="300" placeholder="ඔයාගේ status එක ලියන්න…"></textarea>
+    </div>
+    <label class="field-label">Background එකක් තෝරන්න</label>
+    <div id="st-bgs" class="grad-grid"></div>
+  </div>
+
+  <div id="st-photo-pane" class="hidden">
+    <div id="st-photo-preview" class="st-photo"><span>📷</span></div>
+    <button id="st-choose-photo" class="btn-ghost wide">📷 Photo එකක් තෝරන්න</button>
+    <input id="st-photo-input" type="file" accept="image/*" class="hidden">
+  </div>
+
+  <p class="muted small center">⏳ Status එක 24h යනකම් පේනවා · 🔒 End-to-end encrypted</p>
+  <div class="modal-actions">
+    <button class="btn-ghost" data-close>Cancel</button>
+    <button id="st-post" class="btn-primary">Post 🚀</button>
+  </div>
+</div>
+
+<!-- story viewer -->
+<div id="story-viewer" class="hidden">
+  <div id="sv-bg" class="sv-bg grad-3"></div>
+  <div class="sv-top">
+    <div id="sv-bars" class="sv-bars"></div>
+    <div class="sv-head">
+      <span id="sv-avatar" class="avatar sm grad-0">😀</span>
+      <div class="sv-meta"><b id="sv-name">—</b><span id="sv-time">—</span></div>
+      <span id="sv-views" class="sv-views hidden">👁 0</span>
+      <button id="sv-delete" class="icon-btn light hidden" title="Delete status">🗑</button>
+      <button id="sv-close" class="icon-btn light" title="Close">✖</button>
+    </div>
+  </div>
+  <div id="sv-content" class="sv-content"></div>
+  <button id="sv-prev" class="sv-nav prev" title="Previous">‹</button>
+  <button id="sv-next" class="sv-nav next" title="Next">›</button>
+  <div id="sv-reply-bar" class="sv-reply">
+    <input id="sv-reply" type="text" maxlength="500" placeholder="Reply කරන්න…">
+    <button id="sv-reply-send" class="fab">➤</button>
+  </div>
+</div>
+
+<!-- image viewer -->
+<div id="lightbox" class="hidden">
+  <button id="lightbox-close" class="icon-btn light">✖</button>
+  <img id="lightbox-img" alt="Photo">
+  <div id="lightbox-caption"></div>
+</div>
+
+<!-- emoji picker -->
+<div id="emoji-picker" class="hidden"></div>
+
+<!-- sticker picker -->
+<div id="sticker-picker" class="hidden">
+  <div id="sticker-tabs"></div>
+  <div id="sticker-grid"></div>
+</div>
+
+<!-- message context menu -->
+<div id="msg-menu" class="hidden">
+  <div id="msg-menu-reactions"></div>
+  <button data-act="reply">↩️ Reply</button>
+  <button data-act="copy">📋 Copy</button>
+  <button data-act="download" class="hidden">⬇️ Download</button>
+  <button data-act="delete" class="danger hidden">🗑 Delete for everyone</button>
+</div>
+
+<!-- ══════════════ CALL UI ══════════════ -->
+<div id="incoming-call" class="hidden">
+  <div class="call-card pop-in">
+    <div id="ic-avatar" class="avatar xl grad-0">😀</div>
+    <h3 id="ic-name">—</h3>
+    <p id="ic-kind" class="muted">Incoming voice call…</p>
+    <div class="call-actions">
+      <button id="ic-reject" class="call-btn reject">📞</button>
+      <button id="ic-accept" class="call-btn accept pulse">📞</button>
+    </div>
+  </div>
+</div>
+
+<div id="call-screen" class="hidden">
+  <div id="call-videos" class="call-videos"></div>
+  <video id="local-video" class="pip" autoplay playsinline muted></video>
+  <div class="call-top">
+    <div id="cs-avatar" class="avatar xl grad-0">😀</div>
+    <h3 id="cs-name">—</h3>
+    <p id="cs-status">Calling…</p>
+    <div id="cs-peers" class="cs-peers"></div>
+  </div>
+  <div class="call-actions bottom">
+    <button id="cs-mute" class="call-btn ctrl" title="Mute">🎤</button>
+    <button id="cs-cam" class="call-btn ctrl" title="Camera">🎥</button>
+    <button id="cs-hangup" class="call-btn reject" title="End call">📞</button>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script src="/crypto.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "OneZchat",
+  "short_name": "OneZchat",
+  "description": "Secure end-to-end encrypted chat. Your name is your ID.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f14",
+  "theme_color": "#00c389",
+  "icons": [
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

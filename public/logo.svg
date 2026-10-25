@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="OneZchat logo">
+  <defs>
+    <linearGradient id="ozg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00E5A0"/>
+      <stop offset="55%" stop-color="#00C389"/>
+      <stop offset="100%" stop-color="#00B4D8"/>
+    </linearGradient>
+    <linearGradient id="ozs" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity=".35"/>
+      <stop offset="60%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- chat bubble -->
+  <path fill="url(#ozg)" d="M120 14c54 0 92 38 92 88 0 52-40 92-92 92-9.6 0-19-1.5-27.8-4.3L38 208l10.2-47.2C34.6 144.8 28 124.4 28 102 28 52 66 14 120 14z"/>
+  <path fill="url(#ozs)" d="M120 14c54 0 92 38 92 88 0 52-40 92-92 92-9.6 0-19-1.5-27.8-4.3L38 208l10.2-47.2C34.6 144.8 28 124.4 28 102 28 52 66 14 120 14z"/>
+  <!-- 1Z mark : "1" stem + lightning Z -->
+  <g fill="#ffffff">
+    <path d="M84 66h16.5v78H84z"/>
+    <path d="M84 66l-14.5 13.5 8 9L92 75z"/>
+    <path d="M119 66h49l-31.5 36.5h21.7l-39.7 46.5 8.7-33H108z" transform="translate(6,-4)"/>
+    <rect x="116" y="130" width="52" height="14" rx="3"/>
+  </g>
+  <!-- sparkle dots -->
+  <circle cx="178" cy="52" r="6" fill="#ffffff" opacity=".9"/>
+  <circle cx="196" cy="72" r="3.5" fill="#ffffff" opacity=".7"/>
+</svg>

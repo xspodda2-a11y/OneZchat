@@ -75,6 +75,8 @@ const S = {
   identity: null, privKey: null, me: null,
   users: new Map(), chats: new Map(), messages: new Map(),
   payloadCache: new Map(), keyCache: new Map(),
+  stories: new Map(), storyKeys: new Map(), storyPayloads: new Map(),
+  pendingStoryReply: null,
   activeChatId: null, tab: 'chats', search: '',
   replyTo: null, ws: null, wsReady: false, reconnectMs: 1000,
   typingSentAt: 0, typingStopTimer: null,
@@ -83,6 +85,13 @@ const S = {
 const AVATAR_EMOJIS = ['😀','😎','🤩','🥳','😺','🐶','🦁','🐼','🦊','🐯','🌟','🔥','⚡','🌈','🍀','🎧','🚀','👑','💎','🦋','🌸','🐢','🦄','🤖','🍕','⚽','🎸','🌙','☀️','❤️'];
 const PICKER_EMOJIS = ['😀','😁','😂','🤣','😊','😍','😘','😎','🤩','🥳','😏','😌','😴','🤯','🥺','😢','😭','😡','🤔','🤨','😐','🙄','😬','🤐','🤫','🥴','😇','🤠','👍','👎','👏','🙏','💪','🔥','✨','🎉','🎂','❤️','💚','💙','💜','🖤','💔','💯','⭐','🌟','⚡','☀️','🌙','🌈','🍀','🌸','🍕','🍔','☕','🧋','⚽','🏏','🎮','🎧','🎸','🚀','🚗','✈️','🏠','💰','💎','👑','🦁','🐘','🦋','🐶','😺','🙈','👀','💬','🔒','✅','❌','⚠️','🆗','😜','🤗','🫡','🥰','😻','🙌','👋','✌️','🤞','🫶','🇱🇰'];
 const REACTIONS = ['❤️','😂','😮','😢','🙏','👍','🔥'];
+const STICKER_PACKS = [
+  { name: '😊 Mood', items: ['😀','😂','🤣','😊','😍','🥰','😘','😎','🤩','🥳','😜','🤪','😴','🥺','😢','😭','😡','🤯','🫠','🤗'] },
+  { name: '❤️ Love', items: ['❤️','💚','💙','💜','🖤','💔','💕','💖','💘','💝','🫶','😻','💑','💐','🌹','💍'] },
+  { name: '🎉 Fun', items: ['🎉','🎊','🎂','🎁','🏆','🥇','⚽','🏏','🎮','🎧','🎸','🕺','💃','🎤','🎬','🍿'] },
+  { name: '🇱🇰 SL', items: ['🇱🇰','🍵','🥥','🍛','🐘','🦚','🌴','🏝️','🛺','🙏','✨','🔥','🌈','⭐','🌙','☀️'] },
+  { name: '👍 Reacts', items: ['👍','👎','👏','🙏','💪','🤝','👌','✌️','🤞','🫡','👀','🙈','🤔','🤨','😬','👋'] },
+];
 
 /* ---------------- theme ---------------- */
 function applyTheme(t) {
@@ -109,6 +118,7 @@ async function boot() {
   }
   buildOnboarding();
   buildEmojiPicker();
+  buildStickerPicker();
   bindGlobalUi();
   const raw = localStorage.getItem(LS_ID);
   if (raw) {
@@ -224,6 +234,7 @@ async function onServerEvent(d, first) {
       S.users = new Map(d.users.map((u) => [u.id, u]));
       const prevActive = S.activeChatId;
       S.chats = new Map(d.chats.map((c) => [c.id, c]));
+      S.stories = new Map((d.stories || []).map((s) => [s.id, s]));
       showApp();
       renderAll();
       // decrypt list previews
@@ -269,6 +280,12 @@ async function onServerEvent(d, first) {
       renderMessages(true);
       sendWs({ type: 'read', chatId: d.chatId });
       renderChatList();
+      // a story reply that needed a DM to be created first
+      const pr = S.pendingStoryReply;
+      if (pr && S.chats.get(d.chatId)?.members.includes(pr.uid)) {
+        S.pendingStoryReply = null;
+        sendPayload(S.chats.get(d.chatId), { t: 'text', text: pr.text });
+      }
       break;
     }
     case 'message': await onIncomingMessage(d); break;
@@ -308,6 +325,29 @@ async function onServerEvent(d, first) {
       break;
     }
     case 'call_signal': onCallSignal(d); break;
+    case 'story_upsert': {
+      const old = S.stories.get(d.story.id);
+      S.stories.set(d.story.id, { ...d.story, views: d.story.views ?? old?.views });
+      S.storyKeys.delete(d.story.id); S.storyPayloads.delete(d.story.id);
+      if (!d.story.mine && !old) sndRecv();
+      renderStatus();
+      if (Viewer.open && Viewer.userId === d.story.by) { Viewer.list = storiesOf(d.story.by); showStory(Math.min(Viewer.idx, Viewer.list.length - 1)); }
+      break;
+    }
+    case 'story_update': {
+      const st = S.stories.get(d.storyId);
+      if (st) { st.views = d.views; renderStatus(); if (Viewer.open && Viewer.storyId === d.storyId) syncStoryViews(st); }
+      break;
+    }
+    case 'story_removed': {
+      S.stories.delete(d.storyId); S.storyKeys.delete(d.storyId); S.storyPayloads.delete(d.storyId);
+      renderStatus();
+      if (Viewer.open && Viewer.storyId === d.storyId) {
+        Viewer.list = storiesOf(Viewer.userId);
+        if (!Viewer.list.length) closeStory(); else showStory(Math.min(Viewer.idx, Viewer.list.length - 1));
+      }
+      break;
+    }
   }
 }
 
@@ -406,6 +446,7 @@ function payloadPreviewText(msg, payload) {
   if (!payload) return '🔒 Encrypted message';
   if (payload.t === 'image') return '📷 Photo' + (payload.text ? ' · ' + payload.text : '');
   if (payload.t === 'audio') return '🎤 Voice message';
+  if (payload.t === 'sticker') return '🎭 Sticker';
   return payload.text || '';
 }
 async function decryptPreview(chat) {
@@ -436,7 +477,7 @@ function syncMeHeader() {
   $('#me-id').textContent = S.me.id;
   $('#empty-my-id').textContent = S.me.id;
 }
-function renderAll() { renderChatList(); renderPeople(); }
+function renderAll() { renderChatList(); renderPeople(); renderStatus(); }
 
 function chatPeer(chat) {
   if (chat.type !== 'dm') return null;
@@ -599,9 +640,11 @@ function syncConvHeader() {
     st.textContent = lastSeenText(p);
     if (p?.online || p?.isBot) st.classList.add('online');
   }
-  const canCall = chat.type === 'dm' && !p?.isBot;
-  $('#btn-call-audio').style.display = canCall ? '' : 'none';
-  $('#btn-call-video').style.display = canCall ? '' : 'none';
+  const callable = chat.members.some((m) => m !== S.me.id && !S.users.get(m)?.isBot);
+  $('#btn-call-audio').style.display = callable ? '' : 'none';
+  $('#btn-call-video').style.display = callable ? '' : 'none';
+  $('#btn-call-audio').title = chat.type === 'group' ? 'Group voice call' : 'Voice call';
+  $('#btn-call-video').title = chat.type === 'group' ? 'Group video call' : 'Video call';
 }
 
 function senderColor(chat, senderId) {
@@ -628,6 +671,8 @@ function bubbleInnerHtml(chat, msg) {
       if (p.text) html += `<div class="caption msg-text">${fmtText(p.text)}</div>`;
     } else if (p.t === 'audio') {
       html += `<audio controls preload="metadata" src="${p.data}"></audio>`;
+    } else if (p.t === 'sticker') {
+      html += `<span class="sticker-art">${esc(p.text || '🎉')}</span>`;
     } else {
       html += `<span class="msg-text">${fmtText(p.text || '')}</span>`;
     }
@@ -662,12 +707,18 @@ function buildMessageRow(chat, msg, lastDayRef) {
   row.className = `msg-row ${mine ? 'out' : 'in'}${hasR ? ' has-reactions' : ''}`;
   row.dataset.mid = msg.id;
   const b = document.createElement('div');
-  b.className = 'bubble' + (msg.deleted ? ' deleted' : '') + (msg._pending ? ' pending' : '');
+  b.className = 'bubble' + (msg.deleted ? ' deleted' : '') + (msg._pending ? ' pending' : '') + (isStickerMsg(msg) ? ' sticker' : '');
   b.innerHTML = bubbleInnerHtml(chat, msg);
   attachBubbleHandlers(b, chat, msg);
   row.appendChild(b);
   frag.appendChild(row);
   return frag;
+}
+
+function isStickerMsg(msg) {
+  if (!msg || msg.deleted) return false;
+  const p = msg._p || S.payloadCache.get(msg.id);
+  return !!p && p !== '__err__' && p.t === 'sticker';
 }
 
 function renderMessages(scrollBottom) {
@@ -703,7 +754,7 @@ function refreshBubble(msg) {
   const row = $(`#messages .msg-row[data-mid="${msg.id}"]`);
   if (!row || !chat) return;
   const b = row.querySelector('.bubble');
-  b.className = 'bubble' + (msg.deleted ? ' deleted' : '');
+  b.className = 'bubble' + (msg.deleted ? ' deleted' : '') + (isStickerMsg(msg) ? ' sticker' : '');
   b.innerHTML = bubbleInnerHtml(chat, msg);
   attachBubbleHandlers(b, chat, msg);
   row.classList.toggle('has-reactions', Object.keys(msg.reactions || {}).length > 0 && !msg.deleted);
@@ -931,6 +982,7 @@ function openMsgMenu(x, y, chat, msg) {
 function closeMenus() {
   $('#msg-menu').classList.add('hidden');
   $('#emoji-picker').classList.add('hidden');
+  $('#sticker-picker').classList.add('hidden');
   $('#main-menu').classList.add('hidden');
 }
 
@@ -1105,70 +1157,220 @@ function openProfile() {
    CALLS (WebRTC 1-to-1, DTLS-SRTP encrypted by the browser)
    ============================================================ */
 const Call = {
-  pc: null, stream: null, peerId: null, media: 'audio', state: 'idle',
-  pendingOffer: null, iceQueue: [], timer: null, startedAt: 0, ringTimer: null, noAnswerTimer: null,
+  state: 'idle',            // idle | calling | ringing | incall
+  chatId: null, callId: null, media: 'audio', myJoinTs: 0,
+  stream: null, peers: new Map(),   // uid -> {pc, stream, tile, iceQueue, state, joinTs}
+  timer: null, startedAt: 0, ringTimer: null, noAnswerTimer: null, pendingInvite: null,
+  audioCtx: null, meters: new Map(), meterTimer: null,
 };
 const RTC_CFG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] };
+const callActive = () => Call.state !== 'idle';
 
-function callSignal(data) { sendWs({ type: 'call_signal', to: Call.peerId, data }); }
+/* signal helpers: broadcast to the whole chat, or target one member */
+function sig(data) { sendWs({ type: 'call_signal', chatId: Call.chatId, data: { ...data, callId: Call.callId } }); }
+function sigTo(uid, data, callId) { sendWs({ type: 'call_signal', to: uid, data: { ...data, callId: callId || Call.callId } }); }
+
+/* deterministic "who offers": earliest joiner offers; tie-break by id */
+function iOfferFirst(uid, theirJoinTs) {
+  if (Call.myJoinTs !== theirJoinTs) return Call.myJoinTs < theirJoinTs;
+  return S.me.id < uid;
+}
 
 async function startCall(media) {
   const chat = S.chats.get(S.activeChatId);
-  if (!chat || chat.type !== 'dm') return;
-  const peer = chatPeer(chat);
-  if (!peer || peer.isBot) { toast('🤖 Bot එකට call ගන්න බෑ', true); return; }
-  if (Call.state !== 'idle') { toast('📞 Already in a call', true); return; }
-  if (!peer.online) { toast('🔴 ' + peer.name + ' දැන් offline', true); return; }
-  Call.peerId = peer.id; Call.media = media; Call.state = 'calling';
+  if (!chat) return;
+  if (callActive()) { toast('📞 ඔයා දැනටමත් call එකක ඉන්නවා', true); return; }
+  const others = chat.members.filter((m) => m !== S.me.id && !S.users.get(m)?.isBot);
+  if (!others.length) { toast('👥 Call කරන්න කවුරුවත් නෑ', true); return; }
+  if (!others.some((id) => S.users.get(id)?.online)) {
+    toast(chat.type === 'group' ? '🔴 Group එකේ කවුරුවත් online නෑ' : `🔴 ${S.users.get(others[0])?.name || ''} දැන් offline`, true);
+    return;
+  }
   try {
     Call.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: media === 'video' });
-  } catch { toast('🎤 Camera/Mic permission දෙන්න ඕනේ', true); Call.state = 'idle'; return; }
-  setupPc();
-  Call.stream.getTracks().forEach((t) => Call.pc.addTrack(t, Call.stream));
-  showCallScreen(peer, media === 'video' ? '📹 Video calling…' : '📞 Calling…');
-  const offer = await Call.pc.createOffer();
-  await Call.pc.setLocalDescription(offer);
-  callSignal({ kind: 'invite', media, sdp: offer });
-  Call.noAnswerTimer = setTimeout(() => { toast('📞 No answer'); endCall(true); }, 35000);
+  } catch { toast('🎤 Camera/Mic permission දෙන්න ඕනේ', true); return; }
+  Call.chatId = chat.id; Call.media = media; Call.callId = OZCrypto.randomId('call_');
+  Call.myJoinTs = Date.now(); Call.state = 'calling'; Call.peers = new Map();
+  for (const uid of others) peerEntry(uid);
+  showCallScreen(chat.type === 'group' ? `👥 Group ${media === 'video' ? 'video' : 'voice'} call…` : (media === 'video' ? '📹 Video calling…' : '📞 Calling…'));
+  sig({ kind: 'invite', media, joinTs: Call.myJoinTs });
+  startMeters();
+  Call.noAnswerTimer = setTimeout(() => {
+    if (![...Call.peers.values()].some((p) => p.state === 'connected')) { toast('📞 No answer'); endCall(false); }
+  }, 40000);
 }
 
-function setupPc() {
-  Call.pc = new RTCPeerConnection(RTC_CFG);
-  Call.iceQueue = [];
-  Call.pc.onicecandidate = (e) => { if (e.candidate) callSignal({ kind: 'ice', candidate: e.candidate }); };
-  Call.pc.ontrack = (e) => {
-    const rv = $('#remote-video');
-    if (rv.srcObject !== e.streams[0]) rv.srcObject = e.streams[0];
+/* ---------------- peers / tiles ---------------- */
+function peerEntry(uid) {
+  let p = Call.peers.get(uid);
+  if (!p) {
+    p = { uid, pc: null, stream: null, tile: null, iceQueue: [], state: 'new', joinTs: 0 };
+    Call.peers.set(uid, p);
+    addTile(p);
+  }
+  return p;
+}
+function makePc(p) {
+  if (p.pc) return p.pc;
+  const pc = new RTCPeerConnection(RTC_CFG);
+  p.pc = pc;
+  if (Call.stream) Call.stream.getTracks().forEach((t) => pc.addTrack(t, Call.stream));
+  pc.onicecandidate = (e) => { if (e.candidate) sigTo(p.uid, { kind: 'ice', candidate: e.candidate }); };
+  pc.ontrack = (e) => {
+    p.stream = e.streams[0];
+    attachTileStream(p);
+    meterPeer(p);
   };
-  Call.pc.onconnectionstatechange = () => {
-    if (!Call.pc) return;
-    if (Call.pc.connectionState === 'connected') {
-      clearTimeout(Call.noAnswerTimer);
-      Call.state = 'incall'; Call.startedAt = Date.now();
-      Call.timer = setInterval(() => {
-        const s = Math.floor((Date.now() - Call.startedAt) / 1000);
-        $('#cs-status').textContent = `🟢 ${pad(Math.floor(s / 60))}:${pad(s % 60)} · 🔒 encrypted`;
-      }, 500);
-    } else if (['disconnected', 'failed', 'closed'].includes(Call.pc.connectionState)) {
-      if (Call.state !== 'idle') { toast('📞 Call ended'); endCall(false); }
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'connected') { p.state = 'connected'; setTileState(p, '🟢'); onPeerConnected(); }
+    else if (['failed', 'closed'].includes(pc.connectionState)) removePeer(p.uid);
+    else if (pc.connectionState === 'disconnected') {
+      setTileState(p, '…');
+      setTimeout(() => { if (pc.connectionState === 'disconnected') removePeer(p.uid); }, 7000);
     }
   };
+  return pc;
+}
+async function offerTo(p) {
+  try {
+    const pc = makePc(p);
+    p.state = 'connecting'; setTileState(p, 'Connecting…');
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sigTo(p.uid, { kind: 'offer', sdp: offer });
+  } catch (e) { console.warn('[call] offer failed', e); }
+}
+async function flushIce(p) {
+  if (!p.pc) return;
+  for (const c of p.iceQueue) { try { await p.pc.addIceCandidate(c); } catch {} }
+  p.iceQueue = [];
+}
+function removePeer(uid) {
+  const p = Call.peers.get(uid);
+  if (!p) return;
+  try { p.pc?.close(); } catch {}
+  p.tile?.remove();
+  Call.peers.delete(uid);
+  stopMeter(uid);
+  syncGrid();
+  if (!Call.peers.size && callActive()) {
+    toast(Call.state === 'calling' ? '📞 Call එක අවසන් උනා' : '📞 හැමෝම call එකෙන් ගියා');
+    endCall(false);
+  } else syncGrid();
 }
 
-function showCallScreen(peer, status) {
+/* ---------------- call screen ---------------- */
+function addTile(p) {
+  const grid = $('#call-videos');
+  const u = S.users.get(p.uid);
+  const tile = document.createElement('div');
+  tile.className = 'call-tile'; tile.dataset.uid = p.uid;
+  tile.innerHTML = `
+    <div class="tile-face">${avatarHtml({ emoji: u?.avatar?.emoji, grad: u?.avatar?.grad })}</div>
+    <video autoplay playsinline class="hidden"></video>
+    <div class="tile-name">${esc(u?.name || 'Member')}</div>
+    <div class="tile-state">Ringing…</div>`;
+  grid.appendChild(tile);
+  p.tile = tile;
+  syncGrid();
+}
+function setTileState(p, text) {
+  const el = p.tile?.querySelector('.tile-state');
+  if (el) el.textContent = text;
+}
+function attachTileStream(p) {
+  if (!p.tile || !p.stream) return;
+  const v = p.tile.querySelector('video');
+  const hasVideo = p.stream.getVideoTracks().some((t) => t.enabled && t.readyState === 'live');
+  if (hasVideo && Call.media === 'video') {
+    v.srcObject = p.stream; v.classList.remove('hidden');
+    p.tile.querySelector('.tile-face').classList.add('hidden');
+  }
+}
+function syncGrid() {
+  const grid = $('#call-videos');
+  grid.dataset.n = String(Call.peers.size || 1);
+  const chat = S.chats.get(Call.chatId);
+  const names = [...Call.peers.keys()].map((uid) => S.users.get(uid)?.name?.split(' ')[0] || '…');
+  const chips = $('#cs-peers');
+  chips.innerHTML = `<span class="me">🫵 You${Call.media === 'video' ? ' 📹' : ' 🎤'}</span>` +
+    names.map((n) => `<span>${esc(n)}</span>`).join('');
+  if (chat && chat.type === 'group') {
+    $('#cs-name').textContent = chat.name || 'Group call';
+  }
+  const connected = [...Call.peers.values()].filter((p) => p.state === 'connected').length;
+  if (Call.state === 'incall' && connected) {
+    $('#cs-status').textContent = `🟢 ${connected + 1} in call · 🔒 encrypted`;
+  }
+}
+function showCallScreen(status) {
   $('#incoming-call').classList.add('hidden');
   stopRing();
+  const chat = S.chats.get(Call.chatId);
   const av = $('#cs-avatar');
-  av.className = 'avatar xl grad-' + (peer.avatar?.grad ?? 0); av.textContent = peer.avatar?.emoji || '😀';
-  $('#cs-name').textContent = peer.name;
-  $('#cs-status').textContent = status;
-  $('#local-video').srcObject = Call.stream;
-  $('#local-video').style.display = Call.media === 'video' ? '' : 'none';
-  $('#remote-video').style.display = Call.media === 'video' ? '' : 'none';
-  $('#cs-cam').style.display = Call.media === 'video' ? '' : 'none';
+  if (chat?.type === 'group') {
+    av.className = 'avatar xl txt grad-' + (chat.grad || 0); av.textContent = groupInitials(chat.name);
+    $('#cs-name').textContent = chat.name || 'Group call';
+  } else {
+    const p = chat ? chatPeer(chat) : S.users.get([...Call.peers.keys()][0]);
+    av.className = 'avatar xl grad-' + (p?.avatar?.grad ?? 0); av.textContent = p?.avatar?.emoji || '😀';
+    $('#cs-name').textContent = p?.name || 'Call';
+  }
+  $('#cs-status').textContent = status || 'Connecting…';
+  const lv = $('#local-video');
+  lv.srcObject = Call.stream;
+  lv.classList.toggle('hidden', Call.media !== 'video');
+  $('#cs-cam').classList.toggle('hidden', Call.media !== 'video');
   $('#call-screen').classList.remove('hidden');
+  syncGrid();
+}
+function onPeerConnected() {
+  clearTimeout(Call.noAnswerTimer);
+  if (Call.state !== 'incall') { Call.state = 'incall'; Call.startedAt = Date.now(); }
+  if (!Call.timer) {
+    Call.timer = setInterval(() => {
+      const s = Math.floor((Date.now() - Call.startedAt) / 1000);
+      const n = [...Call.peers.values()].filter((p) => p.state === 'connected').length;
+      $('#cs-status').textContent = `${pad(Math.floor(s / 60))}:${pad(s % 60)} · 👥 ${n + 1} · 🔒 encrypted`;
+    }, 500);
+  }
+  syncGrid();
 }
 
+/* ---------------- speaking meter (group calls) ---------------- */
+function startMeters() {
+  if (Call.meterTimer) return;
+  Call.meterTimer = setInterval(() => {
+    for (const [uid, m] of Call.meters) {
+      try {
+        m.analyser.getByteFrequencyData(m.buf);
+        let sum = 0; for (let i = 0; i < m.buf.length; i++) sum += m.buf[i];
+        const lvl = sum / m.buf.length;
+        const tile = Call.peers.get(uid)?.tile;
+        if (tile) tile.classList.toggle('speaking', lvl > 14);
+      } catch {}
+    }
+  }, 160);
+}
+function meterPeer(p) {
+  try {
+    if (!p.stream || !p.stream.getAudioTracks().length) return;
+    Call.audioCtx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (Call.audioCtx.state === 'suspended') Call.audioCtx.resume();
+    const src = Call.audioCtx.createMediaStreamSource(p.stream);
+    const analyser = Call.audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    src.connect(analyser);
+    Call.meters.set(p.uid, { analyser, buf: new Uint8Array(analyser.frequencyBinCount), src });
+  } catch {}
+}
+function stopMeter(uid) {
+  const m = Call.meters.get(uid);
+  if (m) { try { m.src.disconnect(); } catch {} Call.meters.delete(uid); }
+  Call.peers.get(uid)?.tile?.classList.remove('speaking');
+}
+
+/* ---------------- signalling ---------------- */
 function startRing() {
   stopRing();
   const ring = () => { blip(880, 0.35, 'sine', 0.05); blip(1100, 0.35, 'sine', 0.04, 0.38); };
@@ -1178,68 +1380,450 @@ function startRing() {
 function stopRing() { clearInterval(Call.ringTimer); Call.ringTimer = null; }
 
 async function onCallSignal(d) {
-  const from = S.users.get(d.from);
   const data = d.data || {};
-  if (data.kind === 'invite') {
-    if (Call.state !== 'idle') { sendWs({ type: 'call_signal', to: d.from, data: { kind: 'busy' } }); return; }
-    Call.peerId = d.from; Call.media = data.media || 'audio';
-    Call.pendingOffer = data.sdp; Call.state = 'ringing';
-    const av = $('#ic-avatar');
-    av.className = 'avatar xl grad-' + (from?.avatar?.grad ?? 0); av.textContent = from?.avatar?.emoji || '😀';
-    $('#ic-name').textContent = from?.name || 'Someone';
-    $('#ic-kind').textContent = Call.media === 'video' ? '📹 Incoming video call…' : '📞 Incoming voice call…';
-    $('#incoming-call').classList.remove('hidden');
-    startRing();
-    Call.noAnswerTimer = setTimeout(() => { if (Call.state === 'ringing') endCall(false, true); }, 40000);
-  } else if (data.kind === 'answer') {
-    if (Call.pc && Call.state === 'calling') {
-      clearTimeout(Call.noAnswerTimer);
-      await Call.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-      flushIce();
-      $('#cs-status').textContent = 'Connecting…';
+  const from = d.from;
+
+  /* --- not in any call yet --- */
+  if (Call.state === 'idle') {
+    if (data.kind === 'invite') {
+      Call.pendingInvite = { from, chatId: d.chatId, callId: data.callId, media: data.media || 'audio', joinTs: data.joinTs || Date.now() };
+      Call.state = 'ringing';
+      const u = S.users.get(from);
+      const chat = S.chats.get(d.chatId);
+      const av = $('#ic-avatar');
+      if (chat?.type === 'group') {
+        av.className = 'avatar xl txt grad-' + (chat.grad || 0); av.textContent = groupInitials(chat.name);
+        $('#ic-name').textContent = chat.name || 'Group call';
+        $('#ic-kind').textContent = `${u?.name || 'Someone'} · 👥 Group ${data.media === 'video' ? 'video' : 'voice'} call`;
+      } else {
+        av.className = 'avatar xl grad-' + (u?.avatar?.grad ?? 0); av.textContent = u?.avatar?.emoji || '😀';
+        $('#ic-name').textContent = u?.name || 'Someone';
+        $('#ic-kind').textContent = data.media === 'video' ? '📹 Incoming video call…' : '📞 Incoming voice call…';
+      }
+      $('#incoming-call').classList.remove('hidden');
+      startRing();
+      Call.noAnswerTimer = setTimeout(() => { if (Call.state === 'ringing') { stopRing(); resetCall(); toast('📞 Missed call'); } }, 45000);
     }
-  } else if (data.kind === 'ice') {
-    if (Call.pc && Call.pc.remoteDescription) { try { await Call.pc.addIceCandidate(data.candidate); } catch {} }
-    else Call.iceQueue.push(data.candidate);
-  } else if (data.kind === 'hangup') {
-    if (Call.state !== 'idle') { toast('📞 Call ended'); endCall(false); }
-  } else if (data.kind === 'reject') {
-    toast('📞 Call declined'); endCall(false);
-  } else if (data.kind === 'busy') {
-    toast('📞 Busy on another call'); endCall(false);
+    return;
+  }
+
+  /* --- a different call invites while I'm busy --- */
+  if (data.kind === 'invite' && data.callId !== Call.callId) { sigTo(from, { kind: 'busy' }, data.callId); return; }
+  if (data.callId && data.callId !== Call.callId) return;
+
+  switch (data.kind) {
+    case 'join': {                     // someone accepted → say hello, maybe offer
+      if (Call.state === 'ringing') return;
+      const p = peerEntry(from); p.joinTs = data.joinTs || Date.now();
+      setTileState(p, 'Connecting…');
+      sigTo(from, { kind: 'hello', joinTs: Call.myJoinTs });
+      if (iOfferFirst(from, p.joinTs)) offerTo(p);
+      break;
+    }
+    case 'hello': {                    // existing participant greeted me
+      if (Call.state === 'ringing') return;
+      const p = peerEntry(from); p.joinTs = data.joinTs || p.joinTs;
+      setTileState(p, 'Connecting…');
+      if (iOfferFirst(from, p.joinTs)) offerTo(p);
+      break;
+    }
+    case 'offer': {
+      const p = peerEntry(from);
+      const pc = makePc(p);
+      if (pc.signalingState !== 'stable') {
+        if (iOfferFirst(from, p.joinTs || Date.now())) return;    // glare: I'm the offerer → ignore theirs
+        try { await pc.setLocalDescription({ type: 'rollback' }); } catch {}
+      }
+      try {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+        await flushIce(p);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sigTo(from, { kind: 'answer', sdp: answer });
+        p.state = 'connecting'; setTileState(p, 'Connecting…');
+      } catch (e) { console.warn('[call] answer failed', e); }
+      break;
+    }
+    case 'answer': {
+      const p = Call.peers.get(from);
+      if (p?.pc) { try { await p.pc.setRemoteDescription(new RTCSessionDescription(data.sdp)); await flushIce(p); } catch {} }
+      break;
+    }
+    case 'ice': {
+      const p = Call.peers.get(from) || peerEntry(from);
+      if (p.pc?.remoteDescription) { try { await p.pc.addIceCandidate(data.candidate); } catch {} }
+      else p.iceQueue.push(data.candidate);
+      break;
+    }
+    case 'hangup': {
+      const wasOnly = Call.peers.size <= 1;
+      removePeer(from);
+      if (wasOnly || !Call.peers.size) { if (callActive()) { toast('📞 Call ended'); endCall(false); } }
+      break;
+    }
+    case 'reject': removePeer(from); if (!Call.peers.size) { toast('📞 Call declined'); endCall(false); } break;
+    case 'busy': removePeer(from); if (!Call.peers.size) { toast('📞 Busy on another call'); endCall(false); } break;
   }
 }
-async function flushIce() {
-  for (const c of Call.iceQueue) { try { await Call.pc.addIceCandidate(c); } catch {} }
-  Call.iceQueue = [];
-}
+
 async function acceptCall() {
-  const peer = S.users.get(Call.peerId);
+  const inv = Call.pendingInvite;
+  if (!inv) return;
   try {
-    Call.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: Call.media === 'video' });
-  } catch { toast('🎤 Camera/Mic permission දෙන්න ඕනේ', true); callSignal({ kind: 'reject' }); endCall(false); return; }
+    Call.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: inv.media === 'video' });
+  } catch { toast('🎤 Camera/Mic permission දෙන්න ඕනේ', true); declineCall(); return; }
   clearTimeout(Call.noAnswerTimer);
-  Call.state = 'incall';
-  setupPc();
-  Call.stream.getTracks().forEach((t) => Call.pc.addTrack(t, Call.stream));
-  await Call.pc.setRemoteDescription(new RTCSessionDescription(Call.pendingOffer));
-  flushIce();
-  const answer = await Call.pc.createAnswer();
-  await Call.pc.setLocalDescription(answer);
-  callSignal({ kind: 'answer', sdp: answer });
-  showCallScreen(peer, 'Connecting…');
-}
-function endCall(notify, silent) {
-  if (notify && Call.peerId) callSignal({ kind: Call.state === 'ringing' ? 'reject' : 'hangup' });
   stopRing();
-  clearTimeout(Call.noAnswerTimer); clearInterval(Call.timer);
-  try { Call.pc?.close(); } catch {}
+  $('#incoming-call').classList.add('hidden');
+  Call.chatId = inv.chatId; Call.callId = inv.callId; Call.media = inv.media;
+  Call.myJoinTs = Date.now(); Call.state = 'incall'; Call.pendingInvite = null; Call.peers = new Map();
+  const p = peerEntry(inv.from); p.joinTs = inv.joinTs; setTileState(p, 'Connecting…');
+  showCallScreen('Connecting…');
+  startMeters();
+  sig({ kind: 'join', joinTs: Call.myJoinTs });   // others will greet + offer
+}
+function declineCall() {
+  const inv = Call.pendingInvite;
+  if (inv) sigTo(inv.from, { kind: 'reject' }, inv.callId);
+  resetCall();
+}
+function resetCall() {
+  stopRing();
+  clearInterval(Call.timer); clearInterval(Call.meterTimer);
+  clearTimeout(Call.noAnswerTimer);
+  for (const p of Call.peers.values()) { try { p.pc?.close(); } catch {} }
   Call.stream?.getTracks().forEach((t) => t.stop());
-  Call.pc = null; Call.stream = null; Call.peerId = null; Call.state = 'idle'; Call.pendingOffer = null;
+  for (const [, m] of Call.meters) { try { m.src.disconnect(); } catch {} }
+  Call.meters.clear(); Call.meterTimer = null;
+  Call.peers.clear(); Call.stream = null; Call.state = 'idle';
+  Call.chatId = null; Call.callId = null; Call.pendingInvite = null; Call.startedAt = 0; Call.timer = null;
+  $('#call-videos').innerHTML = '';
+  $('#cs-peers').innerHTML = '';
+  $('#local-video').srcObject = null;
   $('#call-screen').classList.add('hidden');
   $('#incoming-call').classList.add('hidden');
-  $('#remote-video').srcObject = null; $('#local-video').srcObject = null;
-  if (silent) toast('📞 Missed call');
+  $('#cs-mute').classList.remove('off'); $('#cs-mute').textContent = '🎤';
+  $('#cs-cam').classList.remove('off'); $('#cs-cam').textContent = '🎥';
+}
+function endCall(notify) {
+  if (notify && Call.chatId && Call.state !== 'ringing') sig({ kind: 'hangup' });
+  resetCall();
+}
+
+/* ============================================================
+   STATUS / STORIES — E2E encrypted, 24h
+   ============================================================ */
+const Viewer = { open: false, userId: null, list: [], idx: 0, timer: null, startedAt: 0, remain: 0, storyId: null, paused: false };
+const ST_BGS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+let stMode = 'text', stBg = 3, stPhoto = null;
+
+const activeStories = () => [...S.stories.values()].filter((s) => s.expiresAt > Date.now());
+function storiesOf(userId) {
+  return activeStories().filter((s) => s.by === userId).sort((a, b) => a.ts - b.ts);
+}
+function unseenCount() {
+  return activeStories().filter((s) => !s.mine && !s.viewed).length;
+}
+
+function getStoryKey(st) {
+  if (S.storyKeys.has(st.id)) return S.storyKeys.get(st.id);
+  const p = (async () => {
+    const w = st.wrappedKey;
+    if (!w) throw new Error('no story key for me');
+    const wrapper = S.users.get(w.by || st.by);
+    if (!wrapper) throw new Error('wrapper missing');
+    return OZCrypto.unwrapGroupKey(w, S.privKey, wrapper.pubKey);
+  })();
+  p.catch(() => S.storyKeys.delete(st.id));
+  S.storyKeys.set(st.id, p);
+  return p;
+}
+async function decryptStory(st) {
+  if (S.storyPayloads.has(st.id)) return S.storyPayloads.get(st.id);
+  try {
+    const key = await getStoryKey(st);
+    const payload = await OZCrypto.decryptJSON(key, st.iv, st.ct);
+    S.storyPayloads.set(st.id, payload);
+    return payload;
+  } catch { S.storyPayloads.set(st.id, null); return null; }
+}
+
+async function createStory(payload, kind) {
+  const key = await OZCrypto.generateGroupKey();
+  const { iv, ct } = await OZCrypto.encryptJSON(key, payload);
+  const wrappedKeys = {};
+  const targets = [...S.users.values()].filter((u) => !u.isBot).slice(0, 300);
+  for (const u of targets) wrappedKeys[u.id] = await OZCrypto.wrapGroupKey(key, S.privKey, u.pubKey, S.me.id);
+  sendWs({ type: 'create_story', kind, iv, ct, wrappedKeys });
+}
+
+function renderStatus() {
+  const el = $('#status-list');
+  if (!el || !S.me) return;
+  const q = S.search.toLowerCase();
+  const unseen = unseenCount();
+  const badge = $('#status-badge');
+  badge.textContent = unseen; badge.classList.toggle('hidden', !unseen);
+
+  const byUser = new Map();
+  for (const st of activeStories()) {
+    if (!byUser.has(st.by)) byUser.set(st.by, []);
+    byUser.get(st.by).push(st);
+  }
+  for (const arr of byUser.values()) arr.sort((a, b) => a.ts - b.ts);
+
+  el.innerHTML = '';
+  // ── my status row ──
+  const mine = byUser.get(S.me.id) || [];
+  const myRow = document.createElement('div');
+  myRow.className = 'row status-row';
+  const myLast = mine[mine.length - 1];
+  myRow.innerHTML = `
+    <div class="avatar-wrap">
+      <span class="status-ring ${mine.length ? 'unseen' : ''}">${avatarHtml({ emoji: S.me.avatar?.emoji, grad: S.me.avatar?.grad })}</span>
+      <button class="my-status-plus" title="Add status">+</button>
+    </div>
+    <div class="row-main">
+      <div class="row-top"><span class="row-name">My status</span>
+      <span class="row-time">${myLast ? listTime(myLast.ts) : ''}</span></div>
+      <div class="row-sub"><span class="preview">${mine.length ? `${mine.length} status · 👁 ${(myLast.views || []).length} viewed` : 'Tap to add status ✨'}</span></div>
+    </div>`;
+  myRow.querySelector('.my-status-plus').onclick = (e) => { e.stopPropagation(); openStatusModal(); };
+  myRow.onclick = () => { if (mine.length) openStory(S.me.id); else openStatusModal(); };
+  el.appendChild(myRow);
+
+  const entries = [...byUser.entries()]
+    .filter(([uid]) => uid !== S.me.id)
+    .filter(([uid]) => {
+      const u = S.users.get(uid);
+      return !q || (u?.name || '').toLowerCase().includes(q) || uid.toLowerCase().includes(q);
+    });
+  const lastTs = (arr) => arr[arr.length - 1].ts;
+  const recent = entries.filter(([, arr]) => arr.some((s) => !s.viewed)).sort((a, b) => lastTs(b[1]) - lastTs(a[1]));
+  const viewed = entries.filter(([, arr]) => !arr.some((s) => !s.viewed)).sort((a, b) => lastTs(b[1]) - lastTs(a[1]));
+
+  const section = (label, items) => {
+    if (!items.length) return;
+    const h = document.createElement('div'); h.className = 'list-section'; h.textContent = label;
+    el.appendChild(h);
+    for (const [uid, arr] of items) {
+      const u = S.users.get(uid);
+      const hasUnseen = arr.some((s) => !s.viewed);
+      const row = document.createElement('div');
+      row.className = 'row status-row';
+      row.innerHTML = `
+        <div class="avatar-wrap"><span class="status-ring ${hasUnseen ? 'unseen' : 'seen'}">
+          ${avatarHtml({ emoji: u?.avatar?.emoji, grad: u?.avatar?.grad })}</span></div>
+        <div class="row-main">
+          <div class="row-top"><span class="row-name">${esc(u?.name || uid)}${u?.isBot ? '<span class="bot-tag">BOT</span>' : ''}</span>
+          <span class="row-time">${listTime(lastTs(arr))}</span></div>
+          <div class="row-sub"><span class="preview ${hasUnseen ? 'typing' : ''}">${arr.length} status${arr.length > 1 ? 'es' : ''} · ${hasUnseen ? '🟢 අලුත්!' : 'බැලුවා ✓'}</span></div>
+        </div>`;
+      row.onclick = () => openStory(uid);
+      el.appendChild(row);
+    }
+  };
+  section('Recent updates', recent);
+  section('Viewed updates', viewed);
+  if (!recent.length && !viewed.length) {
+    const e = document.createElement('div'); e.className = 'list-empty';
+    e.innerHTML = `<span class="big-ic">🟢</span>තවම කාගෙවත් status නෑ.<br>ඔයාගේ එක දාලා බලන්න! ✨`;
+    el.appendChild(e);
+  }
+}
+
+/* ---------------- status composer ---------------- */
+function openStatusModal() {
+  stMode = 'text'; stPhoto = null;
+  const bgWrap = $('#st-bgs');
+  if (!bgWrap.children.length) {
+    for (const g of ST_BGS) {
+      const b = document.createElement('button');
+      b.className = 'grad-' + g + (g === stBg ? ' sel' : '');
+      b.onclick = () => {
+        stBg = g;
+        [...bgWrap.children].forEach((c) => c.classList.remove('sel'));
+        b.classList.add('sel');
+        $('#st-preview').className = 'st-preview grad-' + g;
+      };
+      bgWrap.appendChild(b);
+    }
+  }
+  $('#st-preview').className = 'st-preview grad-' + stBg;
+  $('#st-text').value = '';
+  $('#st-photo-preview').innerHTML = '<span>📷</span>';
+  setStMode('text');
+  openModal('#modal-status');
+  setTimeout(() => $('#st-text').focus(), 120);
+}
+function setStMode(mode) {
+  stMode = mode;
+  $('#st-mode-text').classList.toggle('active', mode === 'text');
+  $('#st-mode-photo').classList.toggle('active', mode === 'photo');
+  $('#st-text-pane').classList.toggle('hidden', mode !== 'text');
+  $('#st-photo-pane').classList.toggle('hidden', mode !== 'photo');
+}
+async function postStatus() {
+  if (stMode === 'photo') {
+    if (!stPhoto) { toast('📷 Photo එකක් තෝරන්න', true); return; }
+    closeModals();
+    toast('🔒 Status එක encrypt කරනවා…');
+    await createStory({ t: 'image', data: stPhoto, bg: stBg }, 'image');
+  } else {
+    const text = $('#st-text').value.trim();
+    if (!text) { toast('📝 Status එකක් ලියන්න', true); return; }
+    closeModals();
+    await createStory({ t: 'text', text, bg: stBg }, 'text');
+  }
+  toast('🟢 Status එක post උනා! 24h පේනවා');
+}
+
+/* ---------------- story viewer ---------------- */
+function openStory(userId) {
+  const list = storiesOf(userId);
+  if (!list.length) return;
+  Viewer.open = true; Viewer.userId = userId; Viewer.list = list;
+  const firstUnseen = list.findIndex((s) => !s.viewed);
+  Viewer.idx = firstUnseen >= 0 ? firstUnseen : 0;
+  $('#story-viewer').classList.remove('hidden');
+  showStory(Viewer.idx);
+}
+function closeStory() {
+  Viewer.open = false; Viewer.userId = null; Viewer.list = []; Viewer.idx = 0; Viewer.storyId = null;
+  clearTimeout(Viewer.timer); Viewer.timer = null;
+  $('#story-viewer').classList.add('hidden');
+  $('#sv-content').innerHTML = '';
+  renderStatus();
+}
+async function showStory(i) {
+  clearTimeout(Viewer.timer);
+  if (i < 0) i = 0;
+  if (i >= Viewer.list.length) {
+    const others = [...new Set(activeStories().filter((s) => !s.mine && !s.viewed).map((s) => s.by))];
+    const nxt = others.find((u) => u !== Viewer.userId);
+    if (nxt) { openStory(nxt); return; }
+    closeStory(); return;
+  }
+  Viewer.idx = i;
+  const st = Viewer.list[i];
+  Viewer.storyId = st.id;
+  const u = S.users.get(st.by);
+
+  const bars = $('#sv-bars');
+  bars.innerHTML = '';
+  Viewer.list.forEach((s, k) => {
+    const b = document.createElement('i');
+    b.innerHTML = '<span></span>';
+    if (k < i) b.classList.add('done');
+    bars.appendChild(b);
+  });
+
+  const av = $('#sv-avatar');
+  av.className = 'avatar sm grad-' + (u?.avatar?.grad ?? 0); av.textContent = u?.avatar?.emoji || '😀';
+  $('#sv-name').textContent = st.mine ? 'My status' : (u?.name || 'Someone');
+  $('#sv-time').textContent = listTime(st.ts);
+  $('#sv-delete').classList.toggle('hidden', !st.mine);
+  $('#sv-reply-bar').classList.toggle('hidden', !!st.mine);
+  $('#sv-reply').value = '';
+  syncStoryViews(st);
+
+  const bg = $('#sv-bg');
+  const box = $('#sv-content');
+  const payload = await decryptStory(st);
+  let dur = 5000;
+  if (!payload) {
+    bg.style.background = ''; bg.className = 'sv-bg grad-9';
+    box.innerHTML = '<div class="sv-text">🔒 Decrypt කරන්න බැරි උනා</div>';
+  } else if (payload.t === 'image') {
+    bg.className = 'sv-bg'; bg.style.background = '#000';
+    box.innerHTML = `<img class="sv-img" src="${payload.data}" alt="Status">`;
+    dur = 6500;
+  } else {
+    bg.style.background = '';
+    bg.className = 'sv-bg grad-' + (payload.bg ?? 3);
+    box.innerHTML = `<div class="sv-text">${fmtText(payload.text || '')}</div>`;
+  }
+
+  if (!st.mine && !st.viewed) {
+    st.viewed = true;
+    sendWs({ type: 'view_story', storyId: st.id });
+    renderStatus();
+  }
+
+  Viewer.remain = dur; Viewer.startedAt = Date.now(); Viewer.paused = false;
+  const cur = bars.children[i];
+  if (cur) { cur.style.setProperty('--dur', dur + 'ms'); cur.classList.add('run'); }
+  Viewer.timer = setTimeout(() => showStory(i + 1), dur);
+}
+function syncStoryViews(st) {
+  const el = $('#sv-views');
+  if (!st.mine) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  el.textContent = '👁 ' + (st.views || []).length;
+  el.title = (st.views || []).map((id) => S.users.get(id)?.name || id).join(', ') || 'තවම කවුරුවත් බලලා නෑ';
+}
+function pauseStory() {
+  if (!Viewer.open || Viewer.paused) return;
+  Viewer.paused = true;
+  clearTimeout(Viewer.timer);
+  Viewer.remain = Math.max(400, Viewer.remain - (Date.now() - Viewer.startedAt));
+  $('#sv-bars').children[Viewer.idx]?.classList.add('paused');
+}
+function resumeStory() {
+  if (!Viewer.open || !Viewer.paused) return;
+  Viewer.paused = false;
+  Viewer.startedAt = Date.now();
+  const cur = $('#sv-bars').children[Viewer.idx];
+  if (cur) { cur.classList.remove('paused'); cur.style.setProperty('--dur', Viewer.remain + 'ms'); }
+  Viewer.timer = setTimeout(() => showStory(Viewer.idx + 1), Viewer.remain);
+}
+function storyReply() {
+  const text = $('#sv-reply').value.trim();
+  const uid = Viewer.userId;
+  if (!text || !uid || uid === S.me.id) return;
+  const existing = [...S.chats.values()].find((c) => c.type === 'dm' && c.members.includes(uid));
+  closeStory();
+  if (existing) { sendPayload(existing, { t: 'text', text }); requestOpenChat(existing.id); }
+  else { S.pendingStoryReply = { uid, text }; sendWs({ type: 'create_dm', peerId: uid }); }
+  toast('↩️ Reply එක යැව්වා!');
+}
+
+/* ============================================================
+   STICKERS
+   ============================================================ */
+let stickerTab = 0;
+function buildStickerPicker() {
+  const tabs = $('#sticker-tabs');
+  tabs.innerHTML = '';
+  STICKER_PACKS.forEach((pack, i) => {
+    const b = document.createElement('button');
+    b.textContent = pack.name;
+    b.className = i === stickerTab ? 'active' : '';
+    b.onclick = () => { stickerTab = i; buildStickerPicker(); };
+    tabs.appendChild(b);
+  });
+  const grid = $('#sticker-grid');
+  grid.innerHTML = '';
+  for (const emo of STICKER_PACKS[stickerTab].items) {
+    const b = document.createElement('button');
+    b.textContent = emo;
+    b.onclick = () => {
+      const chat = S.chats.get(S.activeChatId);
+      if (!chat) { toast('මුලින්ම chat එකක් අරින්න', true); return; }
+      sendPayload(chat, { t: 'sticker', text: emo });
+      $('#sticker-picker').classList.add('hidden');
+    };
+    grid.appendChild(b);
+  }
+}
+function toggleStickerPicker() {
+  const el = $('#sticker-picker');
+  if (!el.classList.contains('hidden')) { el.classList.add('hidden'); return; }
+  $('#emoji-picker').classList.add('hidden');
+  const r = $('#btn-sticker').getBoundingClientRect();
+  el.style.left = Math.max(8, Math.min(r.left - 60, innerWidth - 372)) + 'px';
+  el.style.bottom = (innerHeight - r.top + 10) + 'px';
+  el.classList.remove('hidden');
 }
 
 /* ============================================================
@@ -1275,8 +1859,9 @@ function toggleEmojiPicker() {
 function bindGlobalUi() {
   // tabs
   $('#tab-chats').onclick = () => setTab('chats');
+  $('#tab-status').onclick = () => setTab('status');
   $('#tab-people').onclick = () => setTab('people');
-  $('#search').addEventListener('input', (e) => { S.search = e.target.value; renderChatList(); renderPeople(); });
+  $('#search').addEventListener('input', (e) => { S.search = e.target.value; renderChatList(); renderPeople(); renderStatus(); });
 
   // header
   $('#btn-theme').onclick = () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
@@ -1323,6 +1908,7 @@ function bindGlobalUi() {
   $('#btn-attach').onclick = () => $('#file-input').click();
   $('#file-input').addEventListener('change', (e) => { sendImageFile(e.target.files[0]); e.target.value = ''; });
   $('#btn-emoji').onclick = (e) => { e.stopPropagation(); toggleEmojiPicker(); };
+  $('#btn-sticker').onclick = (e) => { e.stopPropagation(); toggleStickerPicker(); };
   $('#reply-cancel').onclick = clearReply;
   $('#messages').addEventListener('scroll', () => {
     const box = $('#messages');
@@ -1379,9 +1965,40 @@ function bindGlobalUi() {
   $('#lightbox-close').onclick = () => $('#lightbox').classList.add('hidden');
   $('#lightbox').addEventListener('click', (e) => { if (e.target.id === 'lightbox') $('#lightbox').classList.add('hidden'); });
 
+  // ── status / stories ──
+  $('#st-mode-text').onclick = () => setStMode('text');
+  $('#st-mode-photo').onclick = () => setStMode('photo');
+  $('#st-post').onclick = postStatus;
+  $('#st-choose-photo').onclick = () => $('#st-photo-input').click();
+  $('#st-photo-input').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    if (!f.type.startsWith('image/')) { toast('📷 Image එකක්ම තෝරන්න', true); return; }
+    try {
+      const dataUrl = await fileToCompressedDataUrl(f);
+      if (dataUrl.length > 3_800_000) { toast('⚠️ Photo එක ලොකු වැඩියි', true); return; }
+      stPhoto = dataUrl;
+      $('#st-photo-preview').innerHTML = `<img src="${dataUrl}" alt="Status photo">`;
+    } catch { toast('⚠️ Photo එක කියවන්න බැරි උනා', true); }
+  });
+  $('#sv-close').onclick = closeStory;
+  $('#sv-prev').onclick = () => showStory(Viewer.idx - 1);
+  $('#sv-next').onclick = () => showStory(Viewer.idx + 1);
+  $('#sv-delete').onclick = () => {
+    if (!Viewer.storyId) return;
+    if (confirm('මේ status එක මකන්නද?')) sendWs({ type: 'delete_story', storyId: Viewer.storyId });
+  };
+  $('#sv-reply-send').onclick = storyReply;
+  $('#sv-reply').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); storyReply(); } });
+  const sv = $('#story-viewer');
+  sv.addEventListener('pointerdown', (e) => { if (!e.target.closest('input,button')) pauseStory(); });
+  sv.addEventListener('pointerup', (e) => { if (!e.target.closest('input,button')) resumeStory(); });
+  sv.addEventListener('pointercancel', resumeStory);
+  sv.addEventListener('wheel', () => {}, { passive: true });
+
   // calls
   $('#ic-accept').onclick = acceptCall;
-  $('#ic-reject').onclick = () => endCall(true);
+  $('#ic-reject').onclick = declineCall;
   $('#cs-hangup').onclick = () => endCall(true);
   $('#cs-mute').onclick = (e) => {
     const t = Call.stream?.getAudioTracks()[0]; if (!t) return;
@@ -1400,10 +2017,16 @@ function bindGlobalUi() {
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#msg-menu') && !e.target.closest('.bubble')) $('#msg-menu').classList.add('hidden');
     if (!e.target.closest('#emoji-picker') && !e.target.closest('#btn-emoji')) $('#emoji-picker').classList.add('hidden');
+    if (!e.target.closest('#sticker-picker') && !e.target.closest('#btn-sticker')) $('#sticker-picker').classList.add('hidden');
     if (!e.target.closest('#main-menu') && !e.target.closest('#btn-menu')) $('#main-menu').classList.add('hidden');
   });
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { closeMenus(); closeModals(); $('#lightbox').classList.add('hidden'); }
+    if (e.key === 'Escape') {
+      closeMenus(); closeModals(); $('#lightbox').classList.add('hidden');
+      if (Viewer.open) closeStory();
+    }
+    if (Viewer.open && e.key === 'ArrowRight') showStory(Viewer.idx + 1);
+    if (Viewer.open && e.key === 'ArrowLeft') showStory(Viewer.idx - 1);
   });
   // when tab becomes visible again, mark active chat read
   document.addEventListener('visibilitychange', () => {
@@ -1417,10 +2040,14 @@ function bindGlobalUi() {
 function setTab(tab) {
   S.tab = tab;
   $('#tab-chats').classList.toggle('active', tab === 'chats');
+  $('#tab-status').classList.toggle('active', tab === 'status');
   $('#tab-people').classList.toggle('active', tab === 'people');
   $('#chat-list').classList.toggle('hidden', tab !== 'chats');
+  $('#status-list').classList.toggle('hidden', tab !== 'status');
   $('#people-list').classList.toggle('hidden', tab !== 'people');
-  if (tab === 'people') renderPeople(); else renderChatList();
+  if (tab === 'people') renderPeople();
+  else if (tab === 'status') renderStatus();
+  else renderChatList();
 }
 
 /* profile grid preview fallback (pickerGrid calls this) */

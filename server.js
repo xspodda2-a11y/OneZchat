@@ -25,14 +25,14 @@ const MAX_MSG_BYTES = 6 * 1024 * 1024; // encrypted payloads incl. image/audio m
 const BOT_ID = 'OZ-ONEZBOT';
 
 /* ----------------------------- DB ----------------------------- */
-let db = { users: {}, chats: {}, messages: [], botPrivJwk: null, botPubJwk: null };
+let db = { users: {}, chats: {}, messages: [], stories: [], botPrivJwk: null, botPubJwk: null };
 const chatMsgIndex = new Map(); // chatId -> Message[]
 
 function loadDb() {
   try {
     if (fs.existsSync(DB_FILE)) {
       db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-      db.users ||= {}; db.chats ||= {}; db.messages ||= [];
+      db.users ||= {}; db.chats ||= {}; db.messages ||= []; db.stories ||= [];
     }
   } catch (e) { console.error('[db] load failed, starting fresh:', e.message); }
   for (const m of db.messages) {
@@ -107,6 +107,36 @@ function chatForUser(chat, userId) {
   };
 }
 const recentMessages = (chatId, n = 200) => (chatMsgIndex.get(chatId) || []).slice(-n);
+
+/* --------------------------- Stories -------------------------- */
+/* Status/Stories are end-to-end encrypted too: the client encrypts the
+   content once with a random AES key and "wraps" that key per viewer
+   (ECDH). The server only stores ciphertext + the wraps. */
+const STORY_TTL = 24 * 3600e3;
+
+function pruneStories() {
+  const now = Date.now();
+  const before = db.stories.length;
+  db.stories = db.stories.filter((s) => s.expiresAt > now);
+  if (db.stories.length !== before) saveDb();
+}
+function storyForUser(st, uid) {
+  const mine = st.by === uid;
+  const out = {
+    id: st.id, by: st.by, ts: st.ts, kind: st.kind, iv: st.iv, ct: st.ct,
+    wrappedKey: st.wrappedKeys[uid] || null, expiresAt: st.expiresAt,
+    mine, viewed: mine ? true : st.views.includes(uid),
+  };
+  if (mine) out.views = st.views.slice();
+  return out;
+}
+function storiesForUser(uid) {
+  pruneStories();
+  return db.stories
+    .filter((s) => s.expiresAt > Date.now() && (s.by === uid || s.wrappedKeys[uid]))
+    .sort((a, b) => a.ts - b.ts)
+    .map((s) => storyForUser(s, uid));
+}
 
 /* ------------------------ Presence / WS ----------------------- */
 const socketsByUser = new Map(); // userId -> Set<ws>
@@ -285,8 +315,46 @@ async function botHandleMessage(chat, msg) {
   finally { botLocks.delete(chat.id); }
 }
 
+/* The bot posts a Status too, so the Stories tab is never empty.
+   Content is encrypted once; the AES key is wrapped per viewer with the
+   bot's ECDH key — same design as group keys. Raw key lives in memory only. */
+let botStory = null; // { id, raw, iv, ct, expiresAt }
+const BOT_STORY_TEXT =
+  '🎉 *Status* එකට සාදරයෙන් පිළිගන්නවා!\n\n' +
+  '🟢 Status tab එකෙන් ඔයාගේම status එකක් දාන්න — text හෝ photo.\n' +
+  '⏳ 24h යනකම් පේනවා. 🔒 මේකත් End-to-End Encrypted!\n\n' +
+  '— OneZ Bot 🤖';
+
+async function botStoryEnsure(user) {
+  try {
+    const now = Date.now();
+    if (!botStory || botStory.expiresAt <= now || !db.stories.some((s) => s.id === botStory.id)) {
+      const raw = crypto.randomBytes(32);
+      const key = await subtle.importKey('raw', raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+      const iv = crypto.webcrypto.getRandomValues(new Uint8Array(12));
+      const ct = await subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify({ t: 'text', text: BOT_STORY_TEXT, bg: 3 })));
+      db.stories = db.stories.filter((s) => !(s.by === BOT_ID && s.expiresAt <= now)); // drop expired bot stories
+      const st = {
+        id: newId('s_'), by: BOT_ID, ts: now, kind: 'text',
+        iv: b64(iv), ct: b64(ct), wrappedKeys: {}, views: [], expiresAt: now + STORY_TTL,
+      };
+      db.stories.push(st);
+      botStory = { id: st.id, raw, expiresAt: st.expiresAt };
+    }
+    const st = db.stories.find((s) => s.id === botStory.id);
+    if (!st || st.wrappedKeys[user.id]) { if (st) sendToUser(user.id, { type: 'story_upsert', story: storyForUser(st, user.id) }); return; }
+    const shared = await botSharedKey(user.id);
+    const wiv = crypto.webcrypto.getRandomValues(new Uint8Array(12));
+    const wct = await subtle.encrypt({ name: 'AES-GCM', iv: wiv }, shared, botStory.raw);
+    st.wrappedKeys[user.id] = { iv: b64(wiv), ct: b64(wct), by: BOT_ID };
+    saveDb();
+    sendToUser(user.id, { type: 'story_upsert', story: storyForUser(st, user.id) });
+  } catch (e) { console.error('[bot story]', e.message); }
+}
+
 async function botWelcome(user) {
   try {
+    botStoryEnsure(user);
     const chat = findOrCreateDm(BOT_ID, user.id);
     const text =
       `ආයුබෝවන් ${user.name}! 👋💚\n\n*OneZchat* එකට සාදරයෙන් පිළිගන්නවා! ඔයාගේ OneZ ID එක: *${user.id}*\n\n` +
@@ -417,6 +485,7 @@ wss.on('connection', (ws) => {
         type: 'init', me: publicUser(user),
         users: Object.values(db.users).map(publicUser),
         chats: myChats,
+        stories: storiesForUser(user.id),
       });
       broadcastAll({ type: 'presence', userId: user.id, online: true, lastSeen: user.lastSeen });
       // anything sent while offline becomes "delivered" now
@@ -558,10 +627,68 @@ wss.on('connection', (ws) => {
           break;
         }
         case 'call_signal': {
-          const to = db.users[cleanStr(data.to, 20)];
-          if (!to || to.id === me.id || !data.data || typeof data.data !== 'object') return;
-          const dm = Object.values(db.chats).find((c) => c.type === 'dm' && c.members.includes(me.id) && c.members.includes(to.id));
-          sendToUser(to.id, { type: 'call_signal', from: me.id, chatId: dm ? dm.id : null, data: data.data });
+          if (!data.data || typeof data.data !== 'object') return;
+          const chatId = cleanStr(data.chatId, 40);
+          const toId = cleanStr(data.to, 20);
+          const chat = chatId ? db.chats[chatId] : null;
+          if (chatId && (!chat || !chat.members.includes(me.id))) return;
+          if (toId) {
+            const to = db.users[toId];
+            if (!to || to.id === me.id || to.isBot) return;
+            const ctx = chat || Object.values(db.chats).find((c) => c.type === 'dm' && c.members.includes(me.id) && c.members.includes(to.id));
+            sendToUser(to.id, { type: 'call_signal', from: me.id, chatId: ctx ? ctx.id : null, data: data.data });
+          } else if (chat) {
+            // group call: relay to every other member (bots excluded)
+            for (const uid of chat.members) {
+              if (uid === me.id || db.users[uid]?.isBot) continue;
+              sendToUser(uid, { type: 'call_signal', from: me.id, chatId: chat.id, data: data.data });
+            }
+          }
+          break;
+        }
+        case 'create_story': {
+          pruneStories();
+          const kind = data.kind === 'image' ? 'image' : 'text';
+          if (typeof data.iv !== 'string' || typeof data.ct !== 'string' || !data.iv || !data.ct) return;
+          if (data.ct.length > MAX_MSG_BYTES) { send(ws, { type: 'error', error: 'Status එක ගොඩක් ලොකුයි 🙈' }); return; }
+          const src = data.wrappedKeys && typeof data.wrappedKeys === 'object' ? data.wrappedKeys : {};
+          const wrappedKeys = {};
+          for (const uid of Object.keys(src)) {
+            if (!db.users[uid]) continue;
+            const w = src[uid];
+            if (!w || typeof w.iv !== 'string' || typeof w.ct !== 'string') continue;
+            wrappedKeys[uid] = { iv: w.iv.slice(0, 64), ct: w.ct.slice(0, 512), by: cleanStr(w.by, 20) || me.id };
+            if (Object.keys(wrappedKeys).length >= 300) break;
+          }
+          if (!wrappedKeys[me.id]) { send(ws, { type: 'error', error: 'Status encryption key එක හරි නෑ' }); return; }
+          if (db.stories.filter((s) => s.by === me.id).length >= 20) {
+            send(ws, { type: 'error', error: 'Status 20කට වඩා තියන්න බෑ — පරණ එකක් මකන්න' }); return;
+          }
+          const st = {
+            id: newId('s_'), by: me.id, ts: Date.now(), kind,
+            iv: data.iv.slice(0, 64), ct: data.ct, wrappedKeys, views: [],
+            expiresAt: Date.now() + STORY_TTL,
+          };
+          db.stories.push(st); saveDb();
+          for (const uid of Object.keys(wrappedKeys)) sendToUser(uid, { type: 'story_upsert', story: storyForUser(st, uid) });
+          break;
+        }
+        case 'view_story': {
+          const st = db.stories.find((s) => s.id === cleanStr(data.storyId, 40));
+          if (!st || st.by === me.id || !st.wrappedKeys[me.id]) return;
+          if (!st.views.includes(me.id)) {
+            st.views.push(me.id); saveDb();
+            sendToUser(st.by, { type: 'story_update', storyId: st.id, views: st.views.slice() });
+          }
+          break;
+        }
+        case 'delete_story': {
+          const i = db.stories.findIndex((s) => s.id === cleanStr(data.storyId, 40));
+          if (i < 0) return;
+          const st = db.stories[i];
+          if (st.by !== me.id) return;
+          db.stories.splice(i, 1); saveDb();
+          for (const uid of Object.keys(st.wrappedKeys)) sendToUser(uid, { type: 'story_removed', storyId: st.id });
           break;
         }
         case 'ping': send(ws, { type: 'pong', ts: Date.now() }); break;
@@ -591,6 +718,9 @@ setInterval(() => {
     try { ws.ping(); } catch {}
   }
 }, 30000);
+
+// expire stories (24h)
+setInterval(pruneStories, 10 * 60e3);
 
 /* ---------------------------- Boot ---------------------------- */
 (async () => {

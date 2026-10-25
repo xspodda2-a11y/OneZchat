@@ -120,12 +120,14 @@
 
     <nav class="tabs">
       <button id="tab-chats" class="tab active">💬 Chats <span id="chats-badge" class="tab-badge hidden">0</span></button>
+      <button id="tab-status" class="tab">🟢 Status <span id="status-badge" class="tab-badge hidden">0</span></button>
       <button id="tab-people" class="tab">👥 People</button>
     </nav>
 
     <div id="conn-banner" class="conn-banner hidden">📡 Connecting…</div>
 
     <div id="chat-list" class="list"></div>
+    <div id="status-list" class="list hidden"></div>
     <div id="people-list" class="list hidden"></div>
 
     <footer class="side-foot">🔒 End-to-end encrypted · OneZchat</footer>
@@ -140,6 +142,7 @@
       <div class="feature-chips">
         <span>🔒 E2E Encrypted</span><span>👥 Groups</span><span>📞 Voice & Video</span>
         <span>🎤 Voice Msgs</span><span>📷 Photos</span><span>❤️ Reactions</span>
+        <span>🟢 Status</span><span>🎭 Stickers</span><span>👥 Group Calls</span>
       </div>
       <div class="my-id-chip">මගේ ID එක: <b id="empty-my-id">OZ-••••••</b> <button id="empty-copy-id" class="icon-btn small">📋</button></div>
     </div>
@@ -175,6 +178,7 @@
 
       <div id="composer">
         <button id="btn-emoji" class="icon-btn" title="Emoji">😊</button>
+        <button id="btn-sticker" class="icon-btn" title="Stickers">🎭</button>
         <button id="btn-attach" class="icon-btn" title="Send photo">📎</button>
         <input id="file-input" type="file" accept="image/*" class="hidden">
         <div class="input-shell">
@@ -248,6 +252,57 @@
   <div class="modal-actions"><button class="btn-ghost" data-close>Close</button></div>
 </div>
 
+<!-- ══════════════ STATUS / STORIES ══════════════ -->
+<!-- status composer -->
+<div id="modal-status" class="modal hidden">
+  <div class="st-seg">
+    <button id="st-mode-text" class="st-seg-btn active">📝 Text</button>
+    <button id="st-mode-photo" class="st-seg-btn">📷 Photo</button>
+  </div>
+
+  <div id="st-text-pane">
+    <div id="st-preview" class="st-preview grad-3">
+      <textarea id="st-text" maxlength="300" placeholder="ඔයාගේ status එක ලියන්න…"></textarea>
+    </div>
+    <label class="field-label">Background එකක් තෝරන්න</label>
+    <div id="st-bgs" class="grad-grid"></div>
+  </div>
+
+  <div id="st-photo-pane" class="hidden">
+    <div id="st-photo-preview" class="st-photo"><span>📷</span></div>
+    <button id="st-choose-photo" class="btn-ghost wide">📷 Photo එකක් තෝරන්න</button>
+    <input id="st-photo-input" type="file" accept="image/*" class="hidden">
+  </div>
+
+  <p class="muted small center">⏳ Status එක 24h යනකම් පේනවා · 🔒 End-to-end encrypted</p>
+  <div class="modal-actions">
+    <button class="btn-ghost" data-close>Cancel</button>
+    <button id="st-post" class="btn-primary">Post 🚀</button>
+  </div>
+</div>
+
+<!-- story viewer -->
+<div id="story-viewer" class="hidden">
+  <div id="sv-bg" class="sv-bg grad-3"></div>
+  <div class="sv-top">
+    <div id="sv-bars" class="sv-bars"></div>
+    <div class="sv-head">
+      <span id="sv-avatar" class="avatar sm grad-0">😀</span>
+      <div class="sv-meta"><b id="sv-name">—</b><span id="sv-time">—</span></div>
+      <span id="sv-views" class="sv-views hidden">👁 0</span>
+      <button id="sv-delete" class="icon-btn light hidden" title="Delete status">🗑</button>
+      <button id="sv-close" class="icon-btn light" title="Close">✖</button>
+    </div>
+  </div>
+  <div id="sv-content" class="sv-content"></div>
+  <button id="sv-prev" class="sv-nav prev" title="Previous">‹</button>
+  <button id="sv-next" class="sv-nav next" title="Next">›</button>
+  <div id="sv-reply-bar" class="sv-reply">
+    <input id="sv-reply" type="text" maxlength="500" placeholder="Reply කරන්න…">
+    <button id="sv-reply-send" class="fab">➤</button>
+  </div>
+</div>
+
 <!-- image viewer -->
 <div id="lightbox" class="hidden">
   <button id="lightbox-close" class="icon-btn light">✖</button>
@@ -257,6 +312,12 @@
 
 <!-- emoji picker -->
 <div id="emoji-picker" class="hidden"></div>
+
+<!-- sticker picker -->
+<div id="sticker-picker" class="hidden">
+  <div id="sticker-tabs"></div>
+  <div id="sticker-grid"></div>
+</div>
 
 <!-- message context menu -->
 <div id="msg-menu" class="hidden">
@@ -281,12 +342,13 @@
 </div>
 
 <div id="call-screen" class="hidden">
-  <video id="remote-video" autoplay playsinline></video>
-  <video id="local-video" autoplay playsinline muted></video>
+  <div id="call-videos" class="call-videos"></div>
+  <video id="local-video" class="pip" autoplay playsinline muted></video>
   <div class="call-top">
     <div id="cs-avatar" class="avatar xl grad-0">😀</div>
     <h3 id="cs-name">—</h3>
     <p id="cs-status">Calling…</p>
+    <div id="cs-peers" class="cs-peers"></div>
   </div>
   <div class="call-actions bottom">
     <button id="cs-mute" class="call-btn ctrl" title="Mute">🎤</button>

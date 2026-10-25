@@ -1197,6 +1197,9 @@ async function startCall(media) {
   startMeters();
   Call.noAnswerTimer = setTimeout(() => {
     if (![...Call.peers.values()].some((p) => p.state === 'connected')) { toast('📞 No answer'); endCall(false); }
+    else for (const uid of [...Call.peers.keys()]) {           // drop members who never picked up
+      if (Call.peers.get(uid)?.state === 'new') removePeer(uid);
+    }
   }, 40000);
 }
 
@@ -1407,9 +1410,18 @@ async function onCallSignal(d) {
     return;
   }
 
-  /* --- a different call invites while I'm busy --- */
-  if (data.kind === 'invite' && data.callId !== Call.callId) { sigTo(from, { kind: 'busy' }, data.callId); return; }
-  if (data.callId && data.callId !== Call.callId) return;
+  /* --- while ringing, Call.callId isn't set yet: match the pending invite --- */
+  const activeCallId = Call.callId || Call.pendingInvite?.callId || null;
+  if (data.kind === 'invite' && data.callId !== activeCallId) { sigTo(from, { kind: 'busy' }, data.callId); return; }
+  if (data.callId && data.callId !== activeCallId) return;
+
+  if (Call.state === 'ringing') {
+    // caller gave up / declined before I answered
+    if (['hangup', 'reject', 'busy'].includes(data.kind)) {
+      clearTimeout(Call.noAnswerTimer); stopRing(); resetCall(); toast('📞 Missed call');
+    }
+    return;
+  }
 
   switch (data.kind) {
     case 'join': {                     // someone accepted → say hello, maybe offer

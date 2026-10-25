@@ -368,12 +368,15 @@ async function botWelcome(user) {
 
 /* --------------------------- HTTP ----------------------------- */
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon' };
+/* Framing: X-Frame-Options can't express "allow these hosts", and SAMEORIGIN
+   would blank the app inside a cross-origin preview iframe. CSP frame-ancestors
+   is the modern replacement — it keeps clickjacking protection while allowing
+   this app's own origin plus the Arena sandbox/preview hosts. */
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
-  'X-Frame-Options': 'SAMEORIGIN',
   'Referrer-Policy': 'no-referrer',
-  'Permissions-Policy': 'camera=(self), microphone=(self)',
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; base-uri 'self'; form-action 'self'",
+  'Permissions-Policy': 'camera=(self), microphone=(self), display-capture=(self)',
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: blob:; media-src 'self' data: blob:; connect-src 'self' ws: wss:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self' https://*.e2b.app https://*.arena.ai https://arena.ai",
 };
 
 const regRate = new Map(); // ip -> [timestamps]

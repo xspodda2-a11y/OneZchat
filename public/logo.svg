@@ -1,26 +1,68 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-label="OneZchat logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240" role="img" aria-label="OneZchat">
   <defs>
-    <linearGradient id="ozg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#00E5A0"/>
-      <stop offset="55%" stop-color="#00C389"/>
-      <stop offset="100%" stop-color="#00B4D8"/>
+    <linearGradient id="oz-obsidian" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#171b24"/>
+      <stop offset="0.55" stop-color="#0b0e14"/>
+      <stop offset="1" stop-color="#05060a"/>
     </linearGradient>
-    <linearGradient id="ozs" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity=".35"/>
-      <stop offset="60%" stop-color="#ffffff" stop-opacity="0"/>
+    <linearGradient id="oz-gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbeed0"/>
+      <stop offset="0.38" stop-color="#e3c896"/>
+      <stop offset="0.62" stop-color="#c9a468"/>
+      <stop offset="1" stop-color="#8d6a3a"/>
     </linearGradient>
+    <linearGradient id="oz-jewel" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0" stop-color="#2ff0b4"/>
+      <stop offset="0.45" stop-color="#00c389"/>
+      <stop offset="1" stop-color="#00694e"/>
+    </linearGradient>
+    <linearGradient id="oz-gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.42"/>
+      <stop offset="0.55" stop-color="#ffffff" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="oz-halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#00e0a4" stop-opacity="0.55"/>
+      <stop offset="0.6" stop-color="#00b4d8" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#00b4d8" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="oz-bubble-clip">
+      <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"/>
+    </clipPath>
+    <filter id="oz-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.55"/>
+    </filter>
+    <filter id="oz-sparkle-glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="3.2" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
+
+  <!-- obsidian tile -->
+  <rect x="10" y="10" width="220" height="220" rx="66" fill="url(#oz-obsidian)" filter="url(#oz-shadow)"/>
+  <!-- champagne hairlines -->
+  <rect x="10.75" y="10.75" width="218.5" height="218.5" rx="65.25" fill="none" stroke="url(#oz-gold)" stroke-opacity="0.85" stroke-width="1.5"/>
+  <rect x="24" y="24" width="192" height="192" rx="53" fill="none" stroke="url(#oz-gold)" stroke-opacity="0.16" stroke-width="1"/>
+
+  <!-- jewel halo -->
+  <ellipse cx="120" cy="122" rx="92" ry="80" fill="url(#oz-halo)"/>
+
   <!-- chat bubble -->
-  <path fill="url(#ozg)" d="M120 14c54 0 92 38 92 88 0 52-40 92-92 92-9.6 0-19-1.5-27.8-4.3L38 208l10.2-47.2C34.6 144.8 28 124.4 28 102 28 52 66 14 120 14z"/>
-  <path fill="url(#ozs)" d="M120 14c54 0 92 38 92 88 0 52-40 92-92 92-9.6 0-19-1.5-27.8-4.3L38 208l10.2-47.2C34.6 144.8 28 124.4 28 102 28 52 66 14 120 14z"/>
-  <!-- 1Z mark : "1" stem + lightning Z -->
-  <g fill="#ffffff">
-    <path d="M84 66h16.5v78H84z"/>
-    <path d="M84 66l-14.5 13.5 8 9L92 75z"/>
-    <path d="M119 66h49l-31.5 36.5h21.7l-39.7 46.5 8.7-33H108z" transform="translate(6,-4)"/>
-    <rect x="116" y="130" width="52" height="14" rx="3"/>
+  <g>
+    <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"
+          fill="url(#oz-jewel)"/>
+    <g clip-path="url(#oz-bubble-clip)">
+      <rect x="50" y="64" width="140" height="60" fill="url(#oz-gloss)"/>
+      <ellipse cx="150" cy="168" rx="62" ry="34" fill="#003d2c" opacity="0.35"/>
+    </g>
+    <path d="M84,70 H156 A28,28 0 0 1 184,98 V130 A28,28 0 0 1 156,158 H108 L72,184 L86,158 H84 A28,28 0 0 1 56,130 V98 A28,28 0 0 1 84,70 Z"
+          fill="none" stroke="url(#oz-gold)" stroke-opacity="0.5" stroke-width="1.6"/>
   </g>
-  <!-- sparkle dots -->
-  <circle cx="178" cy="52" r="6" fill="#ffffff" opacity=".9"/>
-  <circle cx="196" cy="72" r="3.5" fill="#ffffff" opacity=".7"/>
+
+  <!-- champagne sparkle -->
+  <g filter="url(#oz-sparkle-glow)">
+    <path d="M120,84 C123.4,101.6 136.4,114.6 154,118 C136.4,121.4 123.4,134.4 120,152 C116.6,134.4 103.6,121.4 86,118 C103.6,114.6 116.6,101.6 120,84 Z"
+          fill="url(#oz-gold)"/>
+    <circle cx="160" cy="90" r="4.2" fill="url(#oz-gold)" opacity="0.9"/>
+  </g>
 </svg>

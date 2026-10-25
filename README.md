@@ -4,7 +4,8 @@
 
 # OneZchat 💚 — Chat Freely. Chat Securely.
 
-A WhatsApp-style browser chat with a trendy modern UI, intro animations, groups, voice & video
+A WhatsApp-style browser chat with a luxury obsidian-and-champagne UI, cinematic intro animations,
+groups, voice & video
 calls — and **true end-to-end encryption**. No phone number, no e-mail, **no password**:
 type your name and you instantly get your own **OneZ ID** (e.g. `OZ-7K3F9X`) which is
 generated and saved on your device. Next time you open it, you're straight in.
@@ -32,7 +33,7 @@ generated and saved on your device. Next time you open it, you're straight in.
 | 👥 **Group calls** | Mesh WebRTC calls for up to 9 people with a video grid, live participant chips and a speaking highlight |
 | ❤️ **Reactions & replies** | React, quote-reply, copy, delete-for-everyone |
 | 🤖 **OneZ Bot** | Built-in assistant — chat with it, ask for `help` or a `joke`; it posts a Status too |
-| 🎨 **Trendy UI** | Animated splash intro, glassmorphism, dark/light themes, mobile-first |
+| 🎨 **Luxury UI** | Obsidian & champagne design system, couture splash reveal (hairline frame, serif wordmark, gold shimmer), jewel-toned bubbles, glass panels, dark/light themes, mobile-first |
 
 ## 🚀 Run it
 
@@ -83,10 +84,12 @@ or search by OneZ ID.
 server.js            Node HTTP + WebSocket server, JSON DB, stories, OneZ Bot
 public/
   index.html         App shell (splash, onboarding, chats, status, calls)
-  style.css          Trendy UI: themes, animations, bubbles, story viewer
+  style.css          Luxury design system: tokens, themes, animations, bubbles, story viewer
   crypto.js          WebCrypto E2E engine (ECDH + AES-GCM, key wrapping)
   app.js             Client logic: identity, chats, groups, status, stickers, mesh calls
-  logo.svg           OneZchat logo
+  logo.svg           Luxury emblem (obsidian tile, champagne hairlines, emerald jewel bubble)
+  icon.svg           Maskable app icon source
+  icons/             Generated PWA icons (192/512, any + maskable)
 data/                (git-ignored) runtime database
 ```
 
